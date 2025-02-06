@@ -1,0 +1,96 @@
+import random
+import time
+from telegram import Update, ReplyKeyboardMarkup
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+
+# Константы
+TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
+LIVES = 3
+BASKET_WIDTH = 5
+SCREEN_WIDTH = 10
+FALLING_SPEED = 1.0
+SPEED_INCREASE = 0.1
+
+# Игровые переменные
+score = 0
+lives = LIVES
+falling_items = []
+basket_position = SCREEN_WIDTH // 2
+game_speed = FALLING_SPEED
+
+def start(update: Update, context: CallbackContext) -> None:
+    global score, lives, falling_items, basket_position, game_speed
+    score = 0
+    lives = LIVES
+    falling_items = []
+    basket_position = SCREEN_WIDTH // 2
+    game_speed = FALLING_SPEED
+    update.message.reply_text("Игра началась! Используйте <- и -> для перемещения корзинки.")
+    game_loop(update, context)
+
+def game_loop(update: Update, context: CallbackContext) -> None:
+    global score, lives, game_speed
+    while lives > 0:
+        # Генерация новых предметов
+        if random.random() < 0.2:
+            item_type = random.choice(["token", "bomb"])
+            item_position = random.randint(0, SCREEN_WIDTH - 1)
+            falling_items.append({"type": item_type, "position": item_position, "row": 0})
+
+        # Отрисовка экрана
+        screen = [[" " for _ in range(SCREEN_WIDTH)] for _ in range(10)]
+        for item in falling_items:
+            if item["row"] < len(screen):
+                screen[item["row"]][item["position"]] = "T" if item["type"] == "token" else "B"
+
+        # Отрисовка корзинки
+        for i in range(BASKET_WIDTH):
+            screen[-1][(basket_position + i) % SCREEN_WIDTH] = "="
+
+        # Отправка экрана пользователю
+        screen_text = "\n".join(["".join(row) for row in screen])
+        update.message.reply_text(f"Счет: {score}\nЖизни: {lives}\n\n{screen_text}")
+
+        # Проверка столкновений
+        for item in falling_items[:]:
+            if item["row"] == len(screen) - 1:
+                if basket_position <= item["position"] < basket_position + BASKET_WIDTH:
+                    if item["type"] == "token":
+                        score += 1
+                    else:
+                        lives -= 1
+                falling_items.remove(item)
+
+        # Увеличение скорости
+        game_speed -= SPEED_INCREASE
+        if game_speed < 0.1:
+            game_speed = 0.1
+
+        # Задержка для обновления экрана
+        time.sleep(game_speed)
+
+    update.message.reply_text(f"Игра окончена! Ваш счет: {score}")
+
+def move_left(update: Update, context: CallbackContext) -> None:
+    global basket_position
+    basket_position = (basket_position - 1) % SCREEN_WIDTH
+    update.message.reply_text("Корзинка перемещена влево.")
+
+def move_right(update: Update, context: CallbackContext) -> None:
+    global basket_position
+    basket_position = (basket_position + 1) % SCREEN_WIDTH
+    update.message.reply_text("Корзинка перемещена вправо.")
+
+def main() -> None:
+    updater = Updater(TOKEN)
+    dispatcher = updater.dispatcher
+
+    dispatcher.add_handler(CommandHandler("start", start))
+    dispatcher.add_handler(MessageHandler(Filters.text("<-"), move_left))
+    dispatcher.add_handler(MessageHandler(Filters.text("->"), move_right))
+
+    updater.start_polling()
+    updater.idle()
+
+if name == "main":
+    main()
